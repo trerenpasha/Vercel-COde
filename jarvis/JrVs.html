@@ -1,0 +1,364 @@
+```html
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS | Sesli Asistan</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;min-height:100vh;display:flex;align-items:center;
+  justify-content:center;background:radial-gradient(circle,#08283d,#020711 72%);
+  color:#00eaff;font-family:Arial,sans-serif;padding:15px
+}
+.container{
+  width:min(700px,100%);padding:28px 20px;text-align:center;
+  background:#04111deF;border:1px solid #087e9e;border-radius:22px;
+  box-shadow:0 0 35px #00bce455
+}
+h1{font-size:clamp(32px,7vw,48px);letter-spacing:7px;margin:8px 0}
+.subtitle{letter-spacing:4px;color:#8bd9eb;font-size:12px}
+.orb{
+  margin:30px auto;width:140px;height:140px;border-radius:50%;
+  display:grid;place-items:center;border:2px solid #00eaff;
+  box-shadow:0 0 24px #00eaff,inset 0 0 25px #00eaff66;
+  position:relative
+}
+.orb:after{
+  content:"";position:absolute;inset:-10px;border:1px dashed #00eaff;
+  border-radius:50%;animation:spin 15s linear infinite
+}
+.orb span{font-size:45px}
+.orb.active{animation:pulse 1s infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{50%{box-shadow:0 0 45px #00eaff,inset 0 0 35px #00eaff}}
+#status{min-height:24px;color:#b2f7ff;margin:18px 0}
+#heard{min-height:30px;color:white;overflow-wrap:anywhere}
+button{
+  padding:13px 20px;margin:6px;border-radius:9px;cursor:pointer;
+  border:1px solid #00eaff;background:#06283a;color:#00eaff;font-size:14px
+}
+button:hover{background:#00d8ed;color:#001018}
+input{
+  width:min(430px,100%);padding:13px;border-radius:8px;
+  border:1px solid #087e9e;background:#071522;color:white;
+  font-size:15px;margin-top:15px
+}
+.help{font-size:12px;line-height:2;color:#8aafc2;margin-top:22px}
+.small{font-size:12px;color:#74a9bc;margin-top:12px}
+</style>
+</head>
+<body>
+<main class="container">
+  <div class="subtitle">PERSONAL VOICE ASSISTANT</div>
+  <h1>J.A.R.V.I.S.</h1>
+
+  <div class="orb" id="orb"><span>◉</span></div>
+
+  <div id="status">Sistem hazır. Konuşmak için düğmeye bas.</div>
+  <div id="heard">Seni dinlemeye hazırım.</div>
+
+  <button id="micButton">🎙 KONUŞ</button>
+  <button id="stopButton">■ DİNLEMEYİ DURDUR</button>
+
+  <div>
+    <input id="commandInput" placeholder="Komut yaz: YouTube'da Minecraft ara">
+    <br>
+    <button id="sendButton">KOMUTU ÇALIŞTIR</button>
+  </div>
+
+  <div class="small" id="micInfo">
+    Mikrofon izni gerekebilir. JARVIS dinlerken yeni sekme açılmaz.
+  </div>
+
+  <div class="help">
+    “YouTube'u aç”<br>
+    “Google'da Farming Simulator 19'u ara”<br>
+    “AnimeciX'te Naruto'yu ara”<br>
+    “Spotify'ı aç” · “GitHub'da Minecraft ara”
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+const statusEl = $("status");
+const heardEl = $("heard");
+const orb = $("orb");
+const micInfo = $("micInfo");
+
+let recognition = null;
+let listening = false;
+let lastCommand = "";
+
+const sites = [
+  {
+    names:["youtube"],
+    home:"https://www.youtube.com",
+    search:q=>"https://www.youtube.com/results?search_query="+encodeURIComponent(q)
+  },
+  {
+    names:["google"],
+    home:"https://www.google.com",
+    search:q=>"https://www.google.com/search?q="+encodeURIComponent(q)
+  },
+  {
+    names:["animecix","animeci x"],
+    home:"https://animecix.tv",
+    search:q=>"https://www.google.com/search?q="+encodeURIComponent("site:animecix.tv "+q)
+  },
+  {
+    names:["spotify"],
+    home:"https://open.spotify.com",
+    search:q=>"https://open.spotify.com/search/"+encodeURIComponent(q)
+  },
+  {
+    names:["instagram"],
+    home:"https://www.instagram.com",
+    search:q=>"https://www.google.com/search?q="+encodeURIComponent("site:instagram.com "+q)
+  },
+  {
+    names:["chatgpt"],
+    home:"https://chatgpt.com",
+    search:q=>"https://chatgpt.com/?q="+encodeURIComponent(q)
+  },
+  {
+    names:["github"],
+    home:"https://github.com",
+    search:q=>"https://github.com/search?q="+encodeURIComponent(q)
+  },
+  {
+    names:["whatsapp"],
+    home:"https://web.whatsapp.com",
+    search:q=>"https://www.google.com/search?q="+encodeURIComponent("site:whatsapp.com "+q)
+  },
+  {
+    names:["gmail"],
+    home:"https://mail.google.com",
+    search:q=>"https://www.google.com/search?q="+encodeURIComponent("Gmail "+q)
+  },
+  {
+    names:["netflix"],
+    home:"https://www.netflix.com",
+    search:q=>"https://www.google.com/search?q="+encodeURIComponent("Netflix "+q)
+  },
+  {
+    names:["steam"],
+    home:"https://store.steampowered.com",
+    search:q=>"https://store.steampowered.com/search/?term="+encodeURIComponent(q)
+  },
+  {
+    names:["twitch"],
+    home:"https://www.twitch.tv",
+    search:q=>"https://www.twitch.tv/search?term="+encodeURIComponent(q)
+  }
+];
+
+function norm(s){
+  return String(s || "")
+    .toLocaleLowerCase("tr-TR")
+    .replace(/ı/g,"i")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
+    .replace(/[’']/g," ")
+    .replace(/[^\w\s.-]/g," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+
+function say(text){
+  if(!("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "tr-TR";
+  u.rate = 1;
+  window.speechSynthesis.speak(u);
+}
+
+function findSite(command){
+  const t = norm(command);
+  return sites.find(site =>
+    site.names.some(name => t.includes(norm(name)))
+  );
+}
+
+function wantsSearch(command){
+  return /\b(ara|arama|bul|ara bana|getir)\b/.test(norm(command));
+}
+
+function cleanQuery(command,site){
+  let t = norm(command);
+
+  if(site){
+    for(const name of site.names){
+      t = t.replace(norm(name)," ");
+    }
+  }
+
+  t = t.replace(/\b(jarvis|lutfen|lütfen|ara|arama|yap|bul|bana|getir|goster|goster bana|ac|git|gir|site|sitesi|sitesini|sitesinde|siteye|da|de|ta|te|u|yu|yi|nun|nin|nin|oyunu|oyununu|oyun|kanali|kanalini|kanal|videosu|videosunu|video|filmi|filmini|diziyi|dizisi|dizisini)\b/g," ");
+
+  return t.replace(/\s+/g," ").trim();
+}
+
+function openNewTab(url){
+  // Bilerek yalnızca komut tamamlandıktan sonra yeni sekme açılır.
+  const tab = window.open(url,"_blank");
+
+  if(!tab){
+    statusEl.textContent =
+      "Yeni sekme engellendi. Tarayıcı ayarlarından açılır pencerelere izin ver.";
+    micInfo.textContent =
+      "Komut algılandı; tarayıcı yeni sekmeyi engelledi.";
+    return false;
+  }
+
+  return true;
+}
+
+function executeCommand(command){
+  command = String(command || "").trim();
+
+  if(!command){
+    statusEl.textContent = "Komut algılanmadı. Tekrar deneyebilirsin.";
+    return;
+  }
+
+  lastCommand = command;
+  heardEl.textContent = "Algılanan komut: " + command;
+
+  const site = findSite(command);
+  const search = wantsSearch(command);
+  let url;
+
+  if(site){
+    const query = cleanQuery(command,site);
+
+    if(search && query){
+      url = site.search(query);
+      statusEl.textContent =
+        site.names[0] + " üzerinde aranıyor: " + query;
+    }else{
+      url = site.home;
+      statusEl.textContent = site.names[0] + " yeni sekmede açılıyor.";
+    }
+  }else{
+    let query = cleanQuery(command,null) || command;
+    url = "https://www.google.com/search?q="+encodeURIComponent(query);
+    statusEl.textContent = "Google'da aranıyor: " + query;
+  }
+
+  const opened = openNewTab(url);
+
+  if(opened){
+    micInfo.textContent = "JARVIS bu sekmede açık kalıyor.";
+    say(site ? (search ? "Arama yapılıyor." : "Site açılıyor.") : "Google'da arıyorum.");
+  }
+}
+
+function setupRecognition(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if(!SR){
+    statusEl.textContent =
+      "Ses tanıma desteklenmiyor. Güncel Chrome veya Edge kullan.";
+    $("micButton").disabled = true;
+    return;
+  }
+
+  recognition = new SR();
+  recognition.lang = "tr-TR";
+  recognition.continuous = false;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => {
+    listening = true;
+    orb.classList.add("active");
+    statusEl.textContent = "Dinliyorum... Komutunu söyle.";
+    heardEl.textContent = "";
+    micInfo.textContent = "Şu anda JARVIS dinliyor; yeni sekme açılmadı.";
+  };
+
+  recognition.onresult = event => {
+    let finalText = "";
+    let interimText = "";
+
+    for(let i=event.resultIndex;i<event.results.length;i++){
+      const transcript = event.results[i][0].transcript;
+      if(event.results[i].isFinal) finalText += transcript;
+      else interimText += transcript;
+    }
+
+    if(interimText && !finalText){
+      heardEl.textContent = "Duyulan: " + interimText;
+    }
+
+    if(finalText.trim()){
+      // Önce dinleme tamamlanır, ardından komut çalıştırılır.
+      listening = false;
+      orb.classList.remove("active");
+      executeCommand(finalText.trim());
+    }
+  };
+
+  recognition.onerror = event => {
+    if(event.error==="not-allowed" || event.error==="service-not-allowed"){
+      statusEl.textContent =
+        "Mikrofon izni verilmedi. Adres çubuğundan mikrofonu İzin ver yap.";
+    }else if(event.error==="no-speech"){
+      statusEl.textContent = "Ses algılanmadı. Yeniden deneyebilirsin.";
+    }else{
+      statusEl.textContent = "Ses tanıma hatası: " + event.error;
+    }
+  };
+
+  recognition.onend = () => {
+    listening = false;
+    orb.classList.remove("active");
+    if(statusEl.textContent.startsWith("Dinliyorum")){
+      statusEl.textContent = "Dinleme bitti. Yeni komut için KONUŞ düğmesine bas.";
+    }
+  };
+}
+
+function startListening(){
+  if(!recognition) setupRecognition();
+  if(!recognition) return;
+
+  if(listening){
+    statusEl.textContent = "Zaten dinliyorum.";
+    return;
+  }
+
+  try{
+    // Dinleme sırasında sekme açılmaz.
+    recognition.start();
+  }catch(e){
+    statusEl.textContent = "Biraz bekleyip tekrar dene.";
+  }
+}
+
+$("micButton").addEventListener("click",startListening);
+
+$("stopButton").addEventListener("click",()=>{
+  if(recognition && listening) recognition.stop();
+  listening = false;
+  orb.classList.remove("active");
+  statusEl.textContent = "Dinleme durduruldu.";
+});
+
+$("sendButton").addEventListener("click",()=>{
+  const command = $("commandInput").value.trim();
+  if(command) executeCommand(command);
+});
+
+$("commandInput").addEventListener("keydown",e=>{
+  if(e.key==="Enter") $("sendButton").click();
+});
+
+setupRecognition();
+</script>
+</body>
+</html>
+```
